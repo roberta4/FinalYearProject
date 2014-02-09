@@ -14,6 +14,7 @@
 #include <AR/video.h>
 #include <AR/param.h>
 #include <AR/ar.h>
+#include <AR/matrix.h>
 
 //added myself
 //#include <iostream>
@@ -42,6 +43,11 @@ int             patt_width     = 80.0;
 double          patt_center[2] = {0.0, 0.0};
 double          patt_trans[3][4];
 
+int mouseClicked = 0;
+int click_x;
+int click_y;
+
+
 static void   init(void);
 static void   cleanup(void);
 static void   mouseEvent(int button, int state, int x, int y);
@@ -65,6 +71,9 @@ static void mouseEvent(int button, int state, int x, int y)
 	{
 		printf("Left Mouse Button has been lifted. \n");
 		printf("Position (x,y) = (%d,%d)\n", x, y);
+		mouseClicked = 1;
+		click_x = x;
+		click_y = y;
 	}
 }
 
@@ -138,7 +147,65 @@ static void mainLoop(void)
         arGetTransMatCont(&marker_info[k], patt_trans, patt_center, patt_width, patt_trans);
     }
     contF = 1;
+	//printing out marker information for testing
+	//printf("ARToolkit coordinate system values for the marker relative to the camera: ");
+	//printf("%f %f %f\n", patt_trans[0][3], patt_trans[1][3], patt_trans[2][3]);
+	double          cam_trans[3][4], cam_trans_fin[3][4];
+	arUtilMatInv(patt_trans, cam_trans);
+	//arUtilMatMul(cparam.mat, cam_trans, cam_trans_fin);
+	arUtilMatMul(cparam.mat, patt_trans, cam_trans_fin);
+	//arUtilMatMul(patt_trans, cam_trans, result_matrix);
+	//printf("ARToolkit coordinate system values for the camera relative to the marker: ");
+	//printf("%f %f %f\n", cam_trans[0][3], cam_trans[1][3], cam_trans[2][3]);
+	//printf("%f %f %f %f\n", cam_trans[2][0], cam_trans[2][1], cam_trans[2][2], cam_trans[2][3]);
+	FILE *f = fopen("log.txt", "w");
 
+	fprintf(f, "start: patt_trans\n");
+	fprintf(f, "%f %f %f %f\n", patt_trans[0][0], patt_trans[0][1], patt_trans[0][2], patt_trans[0][3]);
+	fprintf(f, "%f %f %f %f\n", patt_trans[1][0], patt_trans[1][1], patt_trans[1][2], patt_trans[1][3]);
+	fprintf(f, "%f %f %f %f\n", patt_trans[2][0], patt_trans[2][1], patt_trans[2][2], patt_trans[2][3]);
+	fprintf(f, "end\n");
+	fprintf(f, "start: cam_trans\n");
+	fprintf(f, "%f %f %f %f\n", cam_trans[0][0], cam_trans[0][1], cam_trans[0][2], cam_trans[0][3]);
+	fprintf(f, "%f %f %f %f\n", cam_trans[1][0], cam_trans[1][1], cam_trans[1][2], cam_trans[1][3]);
+	fprintf(f, "%f %f %f %f\n", cam_trans[2][0], cam_trans[2][1], cam_trans[2][2], cam_trans[2][3]);
+	fprintf(f, "end\n");
+	fprintf(f, "start: cam_parameters\n");
+	fprintf(f, "%f %f %f %f\n", cparam.mat[0][0], cparam.mat[0][1], cparam.mat[0][2], cparam.mat[0][3]);
+	fprintf(f, "%f %f %f %f\n", cparam.mat[1][0], cparam.mat[1][1], cparam.mat[1][2], cparam.mat[1][3]);
+	fprintf(f, "%f %f %f %f\n", cparam.mat[2][0], cparam.mat[2][1], cparam.mat[2][2], cparam.mat[2][3]);
+	fprintf(f, "end\n");
+
+
+	ARMat *m = arMatrixAlloc(3,3);
+	m->m[0] = cam_trans_fin[0][0];
+	m->m[1] = cam_trans_fin[0][1];
+	m->m[2] = cam_trans_fin[0][3];
+	m->m[3] = cam_trans_fin[1][0];
+	m->m[4] = cam_trans_fin[1][1];
+	m->m[5] = cam_trans_fin[1][3];
+	m->m[6] = cam_trans_fin[2][0];
+	m->m[7] = cam_trans_fin[2][1];
+	m->m[8] = cam_trans_fin[2][3];
+
+	if (mouseClicked){
+		ARMat *v = arMatrixAlloc(3, 1);
+
+		v->m[0] = (double)click_x;
+		v->m[1] = (double)click_y;		
+		v->m[2] = 1.0;
+		arMatrixSelfInv(m);
+		ARMat *r = arMatrixAllocMul(m, v);
+
+		fprintf(f, "start: clicked point on ground\n");
+		fprintf(f, "%f %f\n", r->m[0] / r->m[2], r->m[1] / r->m[2]);
+		//printf( "%f %f\n", r->m[0] / r->m[2], r->m[1] / r->m[2]);
+		printf("%f\n", 180.0/3.14159*atan2(r->m[0] / r->m[2], r->m[1] / r->m[2]));
+		fprintf(f, "end\n");
+	}
+
+	fclose(f);
+	//end of testing
     draw( patt_trans );
 
     argSwapBuffers();
