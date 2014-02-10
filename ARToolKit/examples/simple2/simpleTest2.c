@@ -148,27 +148,14 @@ static void mainLoop(void)
     }
     contF = 1;
 	//printing out marker information for testing
-	//printf("ARToolkit coordinate system values for the marker relative to the camera: ");
-	//printf("%f %f %f\n", patt_trans[0][3], patt_trans[1][3], patt_trans[2][3]);
-	double          cam_trans[3][4], cam_trans_fin[3][4];
-	arUtilMatInv(patt_trans, cam_trans);
-	//arUtilMatMul(cparam.mat, cam_trans, cam_trans_fin);
+	double          cam_trans_fin[3][4];
 	arUtilMatMul(cparam.mat, patt_trans, cam_trans_fin);
-	//arUtilMatMul(patt_trans, cam_trans, result_matrix);
-	//printf("ARToolkit coordinate system values for the camera relative to the marker: ");
-	//printf("%f %f %f\n", cam_trans[0][3], cam_trans[1][3], cam_trans[2][3]);
-	//printf("%f %f %f %f\n", cam_trans[2][0], cam_trans[2][1], cam_trans[2][2], cam_trans[2][3]);
 	FILE *f = fopen("log.txt", "w");
 
 	fprintf(f, "start: patt_trans\n");
 	fprintf(f, "%f %f %f %f\n", patt_trans[0][0], patt_trans[0][1], patt_trans[0][2], patt_trans[0][3]);
 	fprintf(f, "%f %f %f %f\n", patt_trans[1][0], patt_trans[1][1], patt_trans[1][2], patt_trans[1][3]);
 	fprintf(f, "%f %f %f %f\n", patt_trans[2][0], patt_trans[2][1], patt_trans[2][2], patt_trans[2][3]);
-	fprintf(f, "end\n");
-	fprintf(f, "start: cam_trans\n");
-	fprintf(f, "%f %f %f %f\n", cam_trans[0][0], cam_trans[0][1], cam_trans[0][2], cam_trans[0][3]);
-	fprintf(f, "%f %f %f %f\n", cam_trans[1][0], cam_trans[1][1], cam_trans[1][2], cam_trans[1][3]);
-	fprintf(f, "%f %f %f %f\n", cam_trans[2][0], cam_trans[2][1], cam_trans[2][2], cam_trans[2][3]);
 	fprintf(f, "end\n");
 	fprintf(f, "start: cam_parameters\n");
 	fprintf(f, "%f %f %f %f\n", cparam.mat[0][0], cparam.mat[0][1], cparam.mat[0][2], cparam.mat[0][3]);
@@ -200,8 +187,16 @@ static void mainLoop(void)
 		fprintf(f, "start: clicked point on ground\n");
 		fprintf(f, "%f %f\n", r->m[0] / r->m[2], r->m[1] / r->m[2]);
 		//printf( "%f %f\n", r->m[0] / r->m[2], r->m[1] / r->m[2]);
-		printf("%f\n", 180.0/3.14159*atan2(r->m[0] / r->m[2], r->m[1] / r->m[2]));
+		//printf("%f\n", 180.0/3.14159*atan2(r->m[0] / r->m[2], r->m[1] / r->m[2]));
 		fprintf(f, "end\n");
+		//assign the angle to a variable, if this angle = 0, print true
+		double angle = 180.0 / 3.14159*atan2(r->m[0] / r->m[2], r->m[1] / r->m[2]);
+		printf("%f\n", angle);
+		int angleOnTarget = 0;
+		if (angle < 2.5 && angle > -2.5) {
+			angleOnTarget = 1;
+			printf("The angle has just reached 0, so angleOnTarget = %f \n", angleOnTarget);
+		}
 	}
 
 	fclose(f);
