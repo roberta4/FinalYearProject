@@ -200,7 +200,7 @@ static void mainLoop(void)
 	}
 
 	fclose(f);
-	//end of testing
+	//end of testing-BRANCH
     draw( patt_trans );
 
     argSwapBuffers();
