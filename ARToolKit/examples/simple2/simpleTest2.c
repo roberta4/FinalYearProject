@@ -191,15 +191,85 @@ static void mainLoop(void)
 		fprintf(f, "end\n");
 		//assign the angle to a variable, if this angle = 0, print true
 		double angle = 180.0 / 3.14159*atan2(r->m[0] / r->m[2], r->m[1] / r->m[2]);
-		printf("%f\n", angle);
+		//printf("%f\n", angle);
 		int angleOnTarget = 0;
 		if (angle < 2.5 && angle > -2.5) {
 			angleOnTarget = 1;
-			printf("The angle has just reached 0, so angleOnTarget = %f \n", angleOnTarget);
+			//printf("The angle has just reached 0, so angleOnTarget = %f \n", angleOnTarget);
 		}
 	}
 
 	fclose(f);
+	//attempting serial port connection
+	// Define the five bytes to send ("hello")
+	//char bytes_to_send[5];
+	char bytes_to_send[1];
+	bytes_to_send[0] = 'w';
+	//bytes_to_send[1] = 101;
+	//bytes_to_send[2] = 108;
+	//bytes_to_send[3] = 108;
+	//bytes_to_send[4] = 111;
+
+	HANDLE hSerial;
+	DCB dcbSerialParams = { 0 };
+	COMMTIMEOUTS timeouts = { 0 };
+	printf("Opening Serial Port...");
+	//may not need the \\\\.\\ 
+	hSerial = CreateFile("\\\\.\\COM4", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hSerial == INVALID_HANDLE_VALUE) {
+		printf("Error\n");
+		//return 1;
+	}
+	else { printf("OK\n");}
+	//Set device parameters (38400 baud, 1 start bit, 1 stop bit, no parity)
+	dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
+	if (GetCommState(hSerial, &dcbSerialParams) == 0)
+	{
+		printf("Error getting device state\n");
+		CloseHandle(hSerial);
+		//return 1;
+	}
+	dcbSerialParams.BaudRate = CBR_38400;
+	dcbSerialParams.ByteSize = 8;
+	dcbSerialParams.StopBits = ONESTOPBIT;
+	dcbSerialParams.Parity = NOPARITY;
+	if (SetCommState(hSerial, &dcbSerialParams) == 0)
+	{
+		printf("Error setting device parameters\n");
+		CloseHandle(hSerial);
+		//return 1;
+	}
+	// Set COM port timeout settings
+	timeouts.ReadIntervalTimeout = 50;
+	timeouts.ReadTotalTimeoutConstant = 50;
+	timeouts.ReadTotalTimeoutMultiplier = 10;
+	timeouts.WriteTotalTimeoutConstant = 50;
+	timeouts.WriteTotalTimeoutMultiplier = 10;
+	if (SetCommTimeouts(hSerial, &timeouts) == 0)
+	{
+		printf("Error setting timeouts\n");
+		CloseHandle(hSerial);
+		//return 1;
+	}
+	// Send specified text (remaining command line arguments)
+	DWORD bytes_written, total_bytes_written = 0;
+	printf("Sending bytes...");
+	if (!WriteFile(hSerial, bytes_to_send, 1, &bytes_written, NULL))
+	{
+		printf("Error\n");
+		CloseHandle(hSerial);
+		//return 1;
+	}
+	printf("%d bytes written\n", bytes_written);
+	// Close serial port
+	printf("Closing serial port...");
+	if (CloseHandle(hSerial) == 0)
+	{
+		printf("Error\n");
+		//return 1;
+	}
+	printf("OK\n");
+	//end of serial port
 	//end of testing-BRANCH
     draw( patt_trans );
 
