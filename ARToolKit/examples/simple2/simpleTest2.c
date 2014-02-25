@@ -47,6 +47,10 @@ int mouseClicked = 0;
 int click_x;
 int click_y;
 
+//serial port stuff
+HANDLE hSerial;
+DCB dcbSerialParams = { 0 };
+COMMTIMEOUTS timeouts = { 0 };
 
 static void   init(void);
 static void   cleanup(void);
@@ -54,6 +58,8 @@ static void   mouseEvent(int button, int state, int x, int y);
 static void   keyEvent( unsigned char key, int x, int y);
 static void   mainLoop(void);
 static void   draw( double trans[3][4] );
+static void openSerialConnection(void);
+static void closeSerialConnection(void);
 
 int main(int argc, char **argv)
 {
@@ -61,7 +67,10 @@ int main(int argc, char **argv)
     init();
 
     arVideoCapStart();
+
+	openSerialConnection();
     argMainLoop( mouseEvent, keyEvent, mainLoop );
+	closeSerialConnection();
 	return (0);
 }
 
@@ -152,18 +161,6 @@ static void mainLoop(void)
 	arUtilMatMul(cparam.mat, patt_trans, cam_trans_fin);
 	FILE *f = fopen("log.txt", "w");
 
-	fprintf(f, "start: patt_trans\n");
-	fprintf(f, "%f %f %f %f\n", patt_trans[0][0], patt_trans[0][1], patt_trans[0][2], patt_trans[0][3]);
-	fprintf(f, "%f %f %f %f\n", patt_trans[1][0], patt_trans[1][1], patt_trans[1][2], patt_trans[1][3]);
-	fprintf(f, "%f %f %f %f\n", patt_trans[2][0], patt_trans[2][1], patt_trans[2][2], patt_trans[2][3]);
-	fprintf(f, "end\n");
-	fprintf(f, "start: cam_parameters\n");
-	fprintf(f, "%f %f %f %f\n", cparam.mat[0][0], cparam.mat[0][1], cparam.mat[0][2], cparam.mat[0][3]);
-	fprintf(f, "%f %f %f %f\n", cparam.mat[1][0], cparam.mat[1][1], cparam.mat[1][2], cparam.mat[1][3]);
-	fprintf(f, "%f %f %f %f\n", cparam.mat[2][0], cparam.mat[2][1], cparam.mat[2][2], cparam.mat[2][3]);
-	fprintf(f, "end\n");
-
-
 	ARMat *m = arMatrixAlloc(3,3);
 	m->m[0] = cam_trans_fin[0][0];
 	m->m[1] = cam_trans_fin[0][1];
@@ -177,99 +174,58 @@ static void mainLoop(void)
 
 	if (mouseClicked){
 		ARMat *v = arMatrixAlloc(3, 1);
-
 		v->m[0] = (double)click_x;
 		v->m[1] = (double)click_y;		
 		v->m[2] = 1.0;
 		arMatrixSelfInv(m);
 		ARMat *r = arMatrixAllocMul(m, v);
 
-		fprintf(f, "start: clicked point on ground\n");
-		fprintf(f, "%f %f\n", r->m[0] / r->m[2], r->m[1] / r->m[2]);
-		//printf( "%f %f\n", r->m[0] / r->m[2], r->m[1] / r->m[2]);
-		//printf("%f\n", 180.0/3.14159*atan2(r->m[0] / r->m[2], r->m[1] / r->m[2]));
-		fprintf(f, "end\n");
 		//assign the angle to a variable, if this angle = 0, print true
 		double angle = 180.0 / 3.14159*atan2(r->m[0] / r->m[2], r->m[1] / r->m[2]);
 		//printf("%f\n", angle);
+
+		char command_right[1], command_left[1], command_stop[1], command_forward[1];
+		command_right[0] = 'd';
+		command_left[0] = 'a';
+		command_stop[0] = ' ';
+		command_forward[0] = 'w';
+		DWORD bytes_written;
 		int angleOnTarget = 0;
-		if (angle < 2.5 && angle > -2.5) {
+		if (angle >= 10.0) {
+			//printf("Sending right command...");
+			if (!WriteFile(hSerial, command_right, 1, &bytes_written, NULL))
+			{
+				printf("Error\n");
+				CloseHandle(hSerial);
+				return 1;
+			}
+		}
+		else if(angle <= -10.0) {
+			//printf("Sending left command...");
+			if (!WriteFile(hSerial, command_left, 1, &bytes_written, NULL))
+			{
+				printf("Error\n");
+				CloseHandle(hSerial);
+				return 1;
+			}
+		}
+		else {
 			angleOnTarget = 1;
-			//printf("The angle has just reached 0, so angleOnTarget = %f \n", angleOnTarget);
+			WriteFile(hSerial, command_forward, 1, &bytes_written, NULL);
+			//if (r->m[0] <= 0.05 && r->m[1] <= 0.05) {
+				//WriteFile(hSerial, command_stop, 1, &bytes_written, NULL);
+				//mouseClicked = 0;
+			//}
+			double euclideanDistance = r->m[0] * r->m[0] + r->m[1] * r->m[1];
+			printf("Euclidean distance = %f\n", euclideanDistance);
+			if (euclideanDistance <= (0.01 * 0.01)) {
+				WriteFile(hSerial, command_stop, 1, &bytes_written, NULL);
+				mouseClicked = 0;
+			}
 		}
 	}
 
 	fclose(f);
-	//attempting serial port connection
-	// Define the five bytes to send ("hello")
-	//char bytes_to_send[5];
-	char bytes_to_send[1];
-	bytes_to_send[0] = 'w';
-	//bytes_to_send[1] = 101;
-	//bytes_to_send[2] = 108;
-	//bytes_to_send[3] = 108;
-	//bytes_to_send[4] = 111;
-
-	HANDLE hSerial;
-	DCB dcbSerialParams = { 0 };
-	COMMTIMEOUTS timeouts = { 0 };
-	printf("Opening Serial Port...");
-	//may not need the \\\\.\\ 
-	hSerial = CreateFile("\\\\.\\COM4", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hSerial == INVALID_HANDLE_VALUE) {
-		printf("Error\n");
-		//return 1;
-	}
-	else { printf("OK\n");}
-	//Set device parameters (38400 baud, 1 start bit, 1 stop bit, no parity)
-	dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
-	if (GetCommState(hSerial, &dcbSerialParams) == 0)
-	{
-		printf("Error getting device state\n");
-		CloseHandle(hSerial);
-		//return 1;
-	}
-	dcbSerialParams.BaudRate = CBR_38400;
-	dcbSerialParams.ByteSize = 8;
-	dcbSerialParams.StopBits = ONESTOPBIT;
-	dcbSerialParams.Parity = NOPARITY;
-	if (SetCommState(hSerial, &dcbSerialParams) == 0)
-	{
-		printf("Error setting device parameters\n");
-		CloseHandle(hSerial);
-		//return 1;
-	}
-	// Set COM port timeout settings
-	timeouts.ReadIntervalTimeout = 50;
-	timeouts.ReadTotalTimeoutConstant = 50;
-	timeouts.ReadTotalTimeoutMultiplier = 10;
-	timeouts.WriteTotalTimeoutConstant = 50;
-	timeouts.WriteTotalTimeoutMultiplier = 10;
-	if (SetCommTimeouts(hSerial, &timeouts) == 0)
-	{
-		printf("Error setting timeouts\n");
-		CloseHandle(hSerial);
-		//return 1;
-	}
-	// Send specified text (remaining command line arguments)
-	DWORD bytes_written, total_bytes_written = 0;
-	printf("Sending bytes...");
-	if (!WriteFile(hSerial, bytes_to_send, 1, &bytes_written, NULL))
-	{
-		printf("Error\n");
-		CloseHandle(hSerial);
-		//return 1;
-	}
-	printf("%d bytes written\n", bytes_written);
-	// Close serial port
-	printf("Closing serial port...");
-	if (CloseHandle(hSerial) == 0)
-	{
-		printf("Error\n");
-		//return 1;
-	}
-	printf("OK\n");
-	//end of serial port
 	//end of testing-BRANCH
     draw( patt_trans );
 
@@ -349,4 +305,56 @@ static void draw( double trans[3][4] )
     glDisable( GL_LIGHTING );
 
     glDisable( GL_DEPTH_TEST );
+}
+
+static void openSerialConnection(void) {
+	printf("Opening Serial Port...");
+	hSerial = CreateFile("\\\\.\\COM4", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hSerial == INVALID_HANDLE_VALUE) {
+		printf("Error\n");
+		//return 1;
+	}
+	else { printf("OK\n"); }
+	//Set device parameters (38400 baud, 1 start bit, 1 stop bit, no parity)
+	dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
+	if (GetCommState(hSerial, &dcbSerialParams) == 0)
+	{
+		printf("Error getting device state\n");
+		CloseHandle(hSerial);
+		//return 1;
+	}
+	//dcbSerialParams.BaudRate = CBR_38400;
+	//changed to the same baud rate as the serial in arduino sketch
+	dcbSerialParams.BaudRate = CBR_9600;
+	dcbSerialParams.ByteSize = 8;
+	dcbSerialParams.StopBits = ONESTOPBIT;
+	dcbSerialParams.Parity = NOPARITY;
+	if (SetCommState(hSerial, &dcbSerialParams) == 0)
+	{
+		printf("Error setting device parameters\n");
+		CloseHandle(hSerial);
+		//return 1;
+	}
+	// Set COM port timeout settings
+	timeouts.ReadIntervalTimeout = 50;
+	timeouts.ReadTotalTimeoutConstant = 50;
+	timeouts.ReadTotalTimeoutMultiplier = 10;
+	timeouts.WriteTotalTimeoutConstant = 50;
+	timeouts.WriteTotalTimeoutMultiplier = 10;
+	if (SetCommTimeouts(hSerial, &timeouts) == 0)
+	{
+		printf("Error setting timeouts\n");
+		CloseHandle(hSerial);
+		//return 1;
+	}
+}
+
+static void closeSerialConnection(void) {
+	printf("Closing serial port...");
+	if (CloseHandle(hSerial) == 0)
+	{
+		printf("Error\n");
+		//return 1;
+	}
+	printf("OK\n");
 }
