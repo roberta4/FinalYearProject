@@ -182,6 +182,7 @@ static void mainLoop(void)
 
 		//assign the angle to a variable, if this angle = 0, print true
 		double angle = 180.0 / 3.14159*atan2(r->m[0] / r->m[2], r->m[1] / r->m[2]);
+		double euclideanDistance = r->m[0] * r->m[0] + r->m[1] * r->m[1];
 		//printf("%f\n", angle);
 
 		char command_right[1], command_left[1], command_stop[1], command_forward[1];
@@ -191,37 +192,35 @@ static void mainLoop(void)
 		command_forward[0] = 'w';
 		DWORD bytes_written;
 		int angleOnTarget = 0;
-		if (angle >= 10.0) {
-			//printf("Sending right command...");
-			if (!WriteFile(hSerial, command_right, 1, &bytes_written, NULL))
-			{
-				printf("Error\n");
-				CloseHandle(hSerial);
-				return 1;
+		if (euclideanDistance >= 0.001) {
+			if (angle >= 12.5) {
+				//printf("Sending right command...");
+				if (!WriteFile(hSerial, command_right, 1, &bytes_written, NULL))
+				{
+					printf("Error\n");
+					CloseHandle(hSerial);
+					return 1;
+				}
+				Sleep(100);
 			}
-		}
-		else if(angle <= -10.0) {
-			//printf("Sending left command...");
-			if (!WriteFile(hSerial, command_left, 1, &bytes_written, NULL))
-			{
-				printf("Error\n");
-				CloseHandle(hSerial);
-				return 1;
+			else if (angle <= -12.5) {
+				//printf("Sending left command...");
+				if (!WriteFile(hSerial, command_left, 1, &bytes_written, NULL))
+				{
+					printf("Error\n");
+					CloseHandle(hSerial);
+					return 1;
+				}
+				Sleep(100);
+			}
+			else {
+				angleOnTarget = 1;
+				WriteFile(hSerial, command_forward, 1, &bytes_written, NULL);
+				printf("Euclidean distance = %f\n", euclideanDistance);
 			}
 		}
 		else {
-			angleOnTarget = 1;
-			WriteFile(hSerial, command_forward, 1, &bytes_written, NULL);
-			//if (r->m[0] <= 0.05 && r->m[1] <= 0.05) {
-				//WriteFile(hSerial, command_stop, 1, &bytes_written, NULL);
-				//mouseClicked = 0;
-			//}
-			double euclideanDistance = r->m[0] * r->m[0] + r->m[1] * r->m[1];
-			printf("Euclidean distance = %f\n", euclideanDistance);
-			if (euclideanDistance <= (0.01 * 0.01)) {
-				WriteFile(hSerial, command_stop, 1, &bytes_written, NULL);
-				mouseClicked = 0;
-			}
+			WriteFile(hSerial, command_stop, 1, &bytes_written, NULL);
 		}
 	}
 
@@ -309,7 +308,7 @@ static void draw( double trans[3][4] )
 
 static void openSerialConnection(void) {
 	printf("Opening Serial Port...");
-	hSerial = CreateFile("\\\\.\\COM4", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	hSerial = CreateFile("\\\\.\\COM6", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hSerial == INVALID_HANDLE_VALUE) {
 		printf("Error\n");
 		//return 1;
