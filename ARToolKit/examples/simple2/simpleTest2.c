@@ -183,40 +183,86 @@ static void mainLoop(void)
 		//assign the angle to a variable, if this angle = 0, print true
 		double angle = 180.0 / 3.14159*atan2(r->m[0] / r->m[2], r->m[1] / r->m[2]);
 		double euclideanDistance = r->m[0] * r->m[0] + r->m[1] * r->m[1];
-		//printf("%f\n", angle);
+		
+		printf("%f\n", angle);
+		printf("Euclidean distance = %f\n", euclideanDistance);
 
-		char command_right[1], command_left[1], command_stop[1], command_forward[1];
+		char command_right[1], command_left[1], command_stop[1], command_forward[1], command_right_soft[1], command_left_soft[1], command_forward_soft[1];
 		command_right[0] = 'd';
 		command_left[0] = 'a';
 		command_stop[0] = ' ';
 		command_forward[0] = 'w';
+		command_forward_soft[0] = 't';
+		command_right_soft[0] = 'h';
+		command_left_soft[0] = 'f';
 		DWORD bytes_written;
 		int angleOnTarget = 0;
 		if (euclideanDistance >= 0.001) {
 			if (angle >= 12.5) {
-				//printf("Sending right command...");
-				if (!WriteFile(hSerial, command_right, 1, &bytes_written, NULL))
-				{
-					printf("Error\n");
-					CloseHandle(hSerial);
-					return 1;
+				if (angle >= 60) {
+					//printf("Sending right command...");
+					if (!WriteFile(hSerial, command_right, 1, &bytes_written, NULL))
+					{
+						printf("Error\n");
+						CloseHandle(hSerial);
+						return 1;
+					}
+					Sleep(100);
 				}
-				Sleep(100);
+				else {
+					//printf("Sending right command...");
+					if (!WriteFile(hSerial, command_right_soft, 1, &bytes_written, NULL))
+					{
+						printf("Error\n");
+						CloseHandle(hSerial);
+						return 1;
+					}
+					Sleep(100);
+				}
 			}
 			else if (angle <= -12.5) {
-				//printf("Sending left command...");
-				if (!WriteFile(hSerial, command_left, 1, &bytes_written, NULL))
-				{
-					printf("Error\n");
-					CloseHandle(hSerial);
-					return 1;
+				if (angle <= -60) {
+					//printf("Sending left command...");
+					if (!WriteFile(hSerial, command_left, 1, &bytes_written, NULL))
+					{
+						printf("Error\n");
+						CloseHandle(hSerial);
+						return 1;
+					}
+					Sleep(100);
+				} 
+				else {
+					//printf("Sending left command...");
+					if (!WriteFile(hSerial, command_left_soft, 1, &bytes_written, NULL))
+					{
+						printf("Error\n");
+						CloseHandle(hSerial);
+						return 1;
+					}
+					Sleep(100);
 				}
-				Sleep(100);
 			}
 			else {
 				angleOnTarget = 1;
-				WriteFile(hSerial, command_forward, 1, &bytes_written, NULL);
-				printf("Euclidean distance = %f\n", euclideanDistance);
+				if (euclideanDistance >= 0.03) {
+					if (!WriteFile(hSerial, command_forward, 1, &bytes_written, NULL))
+					{
+						printf("Error\n");
+						CloseHandle(hSerial);
+						return 1;
+					}
+					//Sleep(2000);
+				}
+				else {
+					if (!WriteFile(hSerial, command_forward_soft, 1, &bytes_written, NULL))
+					{
+						printf("Error\n");
+						CloseHandle(hSerial);
+						return 1;
+					}
+					//Sleep(2000);
+				}
+				//printf("Euclidean distance = %f\n", euclideanDistance);
 			}
 		}
 		else {
