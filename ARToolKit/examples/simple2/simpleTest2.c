@@ -16,10 +16,6 @@
 #include <AR/ar.h>
 #include <AR/matrix.h>
 
-//added myself
-//#include <iostream>
-//using namespace std;
-//end of added myself
 /* set up the video format globals */
 
 #ifdef _WIN32
@@ -46,6 +42,8 @@ double          patt_trans[3][4];
 int mouseClicked = 0;
 int click_x;
 int click_y;
+int markerFound = 0;
+char command_right[1], command_left[1], command_stop[1], command_forward[1], command_right_soft[1], command_left_soft[1], command_forward_soft[1];
 
 //serial port stuff
 HANDLE hSerial;
@@ -57,12 +55,20 @@ static void   cleanup(void);
 static void   mouseEvent(int button, int state, int x, int y);
 static void   keyEvent( unsigned char key, int x, int y);
 static void   mainLoop(void);
-static void   draw( double trans[3][4] );
 static void openSerialConnection(void);
 static void closeSerialConnection(void);
+static ARMat convertScreenPoint(double trans[3][4] );
+static void moveRobotToPoint(double angle, double euclideanDistance);
 
 int main(int argc, char **argv)
 {
+	command_right[0] = 'd';
+	command_left[0] = 'a';
+	command_stop[0] = ' ';
+	command_forward[0] = 'w';
+	command_forward_soft[0] = 't';
+	command_right_soft[0] = 'h';
+	command_left_soft[0] = 'f';
 	glutInit(&argc, argv);
     init();
 
@@ -94,15 +100,6 @@ static void   keyEvent( unsigned char key, int x, int y)
         cleanup();
         exit(0);
     }
-
-    if( key == 'c' ) {
-        printf("*** %f (frame/sec)\n", (double)count/arUtilTimer());
-        count = 0;
-
-        mode = 1 - mode;
-        if( mode ) printf("Continuous mode: Using arGetTransMatCont.\n");
-         else      printf("One shot mode: Using arGetTransMat.\n");
-    }
 }
 
 /* main loop */
@@ -114,7 +111,7 @@ static void mainLoop(void)
     int             marker_num;
     int             j, k;
 
-    /* grab a vide frame */
+    /* grab a video frame */
     if( (dataPtr = (ARUint8 *)arVideoGetImage()) == NULL ) {
         arUtilSleep(2);
         return;
@@ -130,6 +127,15 @@ static void mainLoop(void)
         cleanup();
         exit(0);
     }
+
+	//Checking whether markers are visible
+	if (marker_num == 0) {
+		markerFound = 0;
+		printf("No Marker visible\n");
+	} else {
+		markerFound = 1;
+		printf("Marker visible!\n");
+	}
 
     arVideoCapNext();
 
@@ -157,123 +163,17 @@ static void mainLoop(void)
     }
     contF = 1;
 	//printing out marker information for testing
-	double          cam_trans_fin[3][4];
-	arUtilMatMul(cparam.mat, patt_trans, cam_trans_fin);
-	FILE *f = fopen("log.txt", "w");
-
-	ARMat *m = arMatrixAlloc(3,3);
-	m->m[0] = cam_trans_fin[0][0];
-	m->m[1] = cam_trans_fin[0][1];
-	m->m[2] = cam_trans_fin[0][3];
-	m->m[3] = cam_trans_fin[1][0];
-	m->m[4] = cam_trans_fin[1][1];
-	m->m[5] = cam_trans_fin[1][3];
-	m->m[6] = cam_trans_fin[2][0];
-	m->m[7] = cam_trans_fin[2][1];
-	m->m[8] = cam_trans_fin[2][3];
-
 	if (mouseClicked){
-		ARMat *v = arMatrixAlloc(3, 1);
-		v->m[0] = (double)click_x;
-		v->m[1] = (double)click_y;		
-		v->m[2] = 1.0;
-		arMatrixSelfInv(m);
-		ARMat *r = arMatrixAllocMul(m, v);
-
+		ARMat s = convertScreenPoint(patt_trans);
+		double angle = 180.0 / 3.14159*atan2(s.m[0] / s.m[2], s.m[1] / s.m[2]);
+		double euclideanDistance = s.m[0] * s.m[0] + s.m[1] * s.m[1];
 		//assign the angle to a variable, if this angle = 0, print true
-		double angle = 180.0 / 3.14159*atan2(r->m[0] / r->m[2], r->m[1] / r->m[2]);
-		double euclideanDistance = r->m[0] * r->m[0] + r->m[1] * r->m[1];
 		
-		printf("%f\n", angle);
+		printf("Angle = %f\n", angle);
 		printf("Euclidean distance = %f\n", euclideanDistance);
-
-		char command_right[1], command_left[1], command_stop[1], command_forward[1], command_right_soft[1], command_left_soft[1], command_forward_soft[1];
-		command_right[0] = 'd';
-		command_left[0] = 'a';
-		command_stop[0] = ' ';
-		command_forward[0] = 'w';
-		command_forward_soft[0] = 't';
-		command_right_soft[0] = 'h';
-		command_left_soft[0] = 'f';
-		DWORD bytes_written;
-		int angleOnTarget = 0;
-		if (euclideanDistance >= 0.001) {
-			if (angle >= 12.5) {
-				if (angle >= 60) {
-					//printf("Sending right command...");
-					if (!WriteFile(hSerial, command_right, 1, &bytes_written, NULL))
-					{
-						printf("Error\n");
-						CloseHandle(hSerial);
-						return 1;
-					}
-					Sleep(100);
-				}
-				else {
-					//printf("Sending right command...");
-					if (!WriteFile(hSerial, command_right_soft, 1, &bytes_written, NULL))
-					{
-						printf("Error\n");
-						CloseHandle(hSerial);
-						return 1;
-					}
-					Sleep(100);
-				}
-			}
-			else if (angle <= -12.5) {
-				if (angle <= -60) {
-					//printf("Sending left command...");
-					if (!WriteFile(hSerial, command_left, 1, &bytes_written, NULL))
-					{
-						printf("Error\n");
-						CloseHandle(hSerial);
-						return 1;
-					}
-					Sleep(100);
-				} 
-				else {
-					//printf("Sending left command...");
-					if (!WriteFile(hSerial, command_left_soft, 1, &bytes_written, NULL))
-					{
-						printf("Error\n");
-						CloseHandle(hSerial);
-						return 1;
-					}
-					Sleep(100);
-				}
-			}
-			else {
-				angleOnTarget = 1;
-				if (euclideanDistance >= 0.03) {
-					if (!WriteFile(hSerial, command_forward, 1, &bytes_written, NULL))
-					{
-						printf("Error\n");
-						CloseHandle(hSerial);
-						return 1;
-					}
-					//Sleep(2000);
-				}
-				else {
-					if (!WriteFile(hSerial, command_forward_soft, 1, &bytes_written, NULL))
-					{
-						printf("Error\n");
-						CloseHandle(hSerial);
-						return 1;
-					}
-					//Sleep(2000);
-				}
-				//printf("Euclidean distance = %f\n", euclideanDistance);
-			}
-		}
-		else {
-			WriteFile(hSerial, command_stop, 1, &bytes_written, NULL);
-		}
+		moveRobotToPoint(angle, euclideanDistance);
 	}
-
-	fclose(f);
 	//end of testing-BRANCH
-    draw( patt_trans );
-
     argSwapBuffers();
 }
 
@@ -314,61 +214,20 @@ static void cleanup(void)
     argCleanup();
 }
 
-static void draw( double trans[3][4] )
-{
-    double    gl_para[16];
-    GLfloat   mat_ambient[]     = {0.0, 0.0, 1.0, 1.0};
-    GLfloat   mat_flash[]       = {0.0, 0.0, 1.0, 1.0};
-    GLfloat   mat_flash_shiny[] = {50.0};
-    GLfloat   light_position[]  = {100.0,-200.0,200.0,0.0};
-    GLfloat   ambi[]            = {0.1, 0.1, 0.1, 0.1};
-    GLfloat   lightZeroColor[]  = {0.9, 0.9, 0.9, 0.1};
-    
-    argDrawMode3D();
-    argDraw3dCamera( 0, 0 );
-    glClearDepth( 1.0 );
-    glClear(GL_DEPTH_BUFFER_BIT);
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);
-    
-    /* load the camera transformation matrix */
-    argConvGlpara(trans, gl_para);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadMatrixd( gl_para );
-
-    glEnable(GL_LIGHTING);
-    glEnable(GL_LIGHT0);
-    glLightfv(GL_LIGHT0, GL_POSITION, light_position);
-    glLightfv(GL_LIGHT0, GL_AMBIENT, ambi);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, lightZeroColor);
-    glMaterialfv(GL_FRONT, GL_SPECULAR, mat_flash);
-    glMaterialfv(GL_FRONT, GL_SHININESS, mat_flash_shiny);	
-    glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
-    glMatrixMode(GL_MODELVIEW);
-    glTranslatef( 0.0, 0.0, 25.0 );
-    glutSolidCube(50.0);
-    glDisable( GL_LIGHTING );
-
-    glDisable( GL_DEPTH_TEST );
-}
-
 static void openSerialConnection(void) {
 	printf("Opening Serial Port...");
 	hSerial = CreateFile("\\\\.\\COM6", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hSerial == INVALID_HANDLE_VALUE) {
-		printf("Error\n");
-		//return 1;
+		printf("Error opening serial port\n");
 	}
 	else { printf("OK\n"); }
-	//Set device parameters (38400 baud, 1 start bit, 1 stop bit, no parity)
+	//Set device parameters (9600 baud, 1 start bit, 1 stop bit, no parity)
 	dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
 	if (GetCommState(hSerial, &dcbSerialParams) == 0)
 	{
 		printf("Error getting device state\n");
 		CloseHandle(hSerial);
-		//return 1;
 	}
-	//dcbSerialParams.BaudRate = CBR_38400;
 	//changed to the same baud rate as the serial in arduino sketch
 	dcbSerialParams.BaudRate = CBR_9600;
 	dcbSerialParams.ByteSize = 8;
@@ -378,7 +237,6 @@ static void openSerialConnection(void) {
 	{
 		printf("Error setting device parameters\n");
 		CloseHandle(hSerial);
-		//return 1;
 	}
 	// Set COM port timeout settings
 	timeouts.ReadIntervalTimeout = 50;
@@ -390,7 +248,6 @@ static void openSerialConnection(void) {
 	{
 		printf("Error setting timeouts\n");
 		CloseHandle(hSerial);
-		//return 1;
 	}
 }
 
@@ -398,8 +255,104 @@ static void closeSerialConnection(void) {
 	printf("Closing serial port...");
 	if (CloseHandle(hSerial) == 0)
 	{
-		printf("Error\n");
-		//return 1;
+		printf("Error closing serial port\n");
 	}
 	printf("OK\n");
 }
+
+static ARMat convertScreenPoint(double trans[3][4])
+{
+	double          cam_trans_fin[3][4];
+	arUtilMatMul(cparam.mat, patt_trans, cam_trans_fin);
+	FILE *f = fopen("log.txt", "w");
+
+	ARMat *m = arMatrixAlloc(3, 3);
+	m->m[0] = cam_trans_fin[0][0];
+	m->m[1] = cam_trans_fin[0][1];
+	m->m[2] = cam_trans_fin[0][3];
+	m->m[3] = cam_trans_fin[1][0];
+	m->m[4] = cam_trans_fin[1][1];
+	m->m[5] = cam_trans_fin[1][3];
+	m->m[6] = cam_trans_fin[2][0];
+	m->m[7] = cam_trans_fin[2][1];
+	m->m[8] = cam_trans_fin[2][3];
+
+	ARMat *v = arMatrixAlloc(3, 1);
+	v->m[0] = (double)click_x;
+	v->m[1] = (double)click_y;
+	v->m[2] = 1.0;
+	arMatrixSelfInv(m);
+	ARMat *r = arMatrixAllocMul(m, v);
+	return *r;
+}
+
+static void moveRobotToPoint(double angle, double euclideanDistance) 
+{
+	DWORD bytes_written;
+	if (euclideanDistance >= 0.001) {
+		if (angle >= 12.5) {
+			if (angle >= 60) {
+				if (!WriteFile(hSerial, command_right, 1, &bytes_written, NULL))
+				{
+					printf("Error: right command\n");
+					CloseHandle(hSerial);
+					return 1;
+				}
+				//Sleep(100);
+			}
+			else {
+				if (!WriteFile(hSerial, command_right_soft, 1, &bytes_written, NULL))
+				{
+					printf("Error: soft-right command\n");
+					CloseHandle(hSerial);
+					return 1;
+				}
+				//Sleep(100);
+			}
+		}
+		else if (angle <= -12.5) {
+			if (angle <= -60) {
+				if (!WriteFile(hSerial, command_left, 1, &bytes_written, NULL))
+				{
+					printf("Error: left command\n");
+					CloseHandle(hSerial);
+					return 1;
+				}
+				//Sleep(100);
+			}
+			else {
+				if (!WriteFile(hSerial, command_left_soft, 1, &bytes_written, NULL))
+				{
+					printf("Error: soft left command\n");
+					CloseHandle(hSerial);
+					return 1;
+				}
+				//Sleep(100);
+			}
+		}
+		else {
+			if (euclideanDistance >= 0.03) {
+				if (!WriteFile(hSerial, command_forward, 1, &bytes_written, NULL))
+				{
+					printf("Error: forward command\n");
+					CloseHandle(hSerial);
+					return 1;
+				}
+				//Sleep(100);
+			}
+			else {
+				if (!WriteFile(hSerial, command_forward_soft, 1, &bytes_written, NULL))
+				{
+					printf("Error: soft forward command\n");
+					CloseHandle(hSerial);
+					return 1;
+				}
+				//Sleep(100);
+			}
+		}
+	}
+	else {
+		WriteFile(hSerial, command_stop, 1, &bytes_written, NULL);
+	}
+}
+
